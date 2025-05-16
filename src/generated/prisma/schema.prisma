@@ -1,0 +1,319 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model untuk autentikasi dan profile
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  profileImage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  googleId String? @unique
+  appleId  String? @unique
+
+  preferences UserPreference?
+
+  libraries    Library[]
+  books        Book[]
+  readings     Reading[]
+  highlights   Highlight[]
+  notes        Note[]
+  vocabulary   VocabularyItem[]
+  badges       Badge[]
+  bookmarks    Bookmark[]
+  readingGoals ReadingGoal[]
+  readingStats ReadingStats[]
+  interests    Interest[]       @relation("UserInterests")
+}
+
+model UserPreference {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Reading preferences
+  fontSize     Int    @default(16)
+  fontFamily   String @default("serif")
+  theme        String @default("light")
+  readingSpeed Int    @default(250) // kata per menit
+
+  // Notification preferences
+  reminderEnabled Boolean   @default(true)
+  reminderTime    DateTime?
+  weeklyReport    Boolean   @default(true)
+
+  // AI preferences
+  aiExplanationLevel String  @default("basic") // basic, intermediate, advanced
+  translationEnabled Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Library {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  books       Book[]   @relation("LibraryBooks")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Book {
+  id            String     @id @default(uuid())
+  title         String
+  author        String
+  description   String?
+  coverImage    String?
+  fileUrl       String // URL ke file EPUB/PDF
+  fileType      String // enum: EPUB, PDF, etc.
+  language      String     @default("en")
+  totalPages    Int?
+  publishedDate DateTime?
+  publisher     String?
+  isbn          String?
+  categories    Category[] @relation("BookCategories")
+
+  // Reading progress & stats
+  readings   Reading[]
+  highlights Highlight[]
+  notes      Note[]
+
+  // User relationship
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Embedding untuk recommendation
+  // contentEmbedding Unsupported("vector(1536)")?
+
+  // Library relationship
+  libraries Library[]  @relation("LibraryBooks")
+  bookmarks Bookmark[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Reading {
+  id     String @id @default(uuid())
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Reading progress
+  currentCfi  String? // Current Content Fragment Identifier (EPUB.js)
+  currentPage Int? // For PDF or current page number
+  progress    Float   @default(0) // 0-100%
+
+  // Time tracking
+  startedAt      DateTime  @default(now())
+  lastReadAt     DateTime  @default(now())
+  completedAt    DateTime?
+  totalTimeSpent Int       @default(0) // seconds
+
+  // Reading sessions
+  sessions ReadingSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReadingSession {
+  id        String  @id @default(uuid())
+  readingId String
+  reading   Reading @relation(fields: [readingId], references: [id], onDelete: Cascade)
+
+  // Session info
+  startCfi  String? // Starting CFI
+  endCfi    String? // Ending CFI
+  startPage Int?
+  endPage   Int?
+  startTime DateTime
+  endTime   DateTime
+  duration  Int // seconds
+  wordsRead Int?
+
+  // Device info
+  deviceType String? // mobile, tablet, desktop
+
+  createdAt DateTime @default(now())
+}
+
+model Highlight {
+  id     String @id @default(uuid())
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Highlight content
+  content  String
+  cfiRange String? // CFI range for EPUB
+  page     Int? // Page for PDF
+  color    String  @default("yellow")
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Related notes
+  notes Note[]
+}
+
+model Note {
+  id      String @id @default(uuid())
+  content String
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Relationships
+  bookId      String
+  book        Book       @relation(fields: [bookId], references: [id], onDelete: Cascade)
+  highlightId String?
+  highlight   Highlight? @relation(fields: [highlightId], references: [id], onDelete: SetNull)
+
+  // AI generated content
+  isAIGenerated Boolean @default(false)
+  aiPrompt      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model VocabularyItem {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Vocabulary details
+  word       String
+  definition String
+  context    String? // Sentence containing the word
+  bookId     String? // Optional book reference
+  language   String  @default("en")
+
+  // Flashcard & learning
+  lastReviewed DateTime?
+  nextReview   DateTime?
+  familiarity  Int       @default(0) // 0-5 scale (spaced repetition)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
+  id          String  @id @default(uuid())
+  name        String  @unique
+  description String?
+  books       Book[]  @relation("BookCategories")
+
+  // For recommendation
+  interests Interest[]
+}
+
+model Interest {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation("UserInterests", fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  level      Int      @default(1) // 1-5 interest level
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, categoryId])
+}
+
+model Badge {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Badge details
+  name        String
+  description String
+  imageUrl    String
+  criteria    String // JSON string of criteria met
+
+  earnedAt DateTime @default(now())
+}
+
+model Bookmark {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookId String
+  book   Book   @relation(fields: [bookId], references: [id], onDelete: Cascade)
+
+  // Bookmark position
+  cfi   String? // CFI for EPUB
+  page  Int? // Page for PDF
+  title String? // Custom title
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReadingGoal {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Goal details
+  type   String // daily, weekly, monthly
+  target Int // minutes, pages, or books
+  unit   String // minutes, pages, books
+
+  // Tracking
+  startDate DateTime
+  endDate   DateTime?
+  progress  Int       @default(0)
+
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ReadingStats {
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Time period
+  date       DateTime
+  periodType String // day, week, month
+
+  // Stats
+  timeSpent      Int @default(0) // minutes
+  pagesRead      Int @default(0)
+  booksCompleted Int @default(0)
+  wordsRead      Int @default(0)
+
+  // Reading characteristics
+  avgReadingSpeed Int? // words per minute
+  readingPattern  String? // JSON data for reading pattern through the day
+
+  @@unique([userId, date, periodType])
+}
